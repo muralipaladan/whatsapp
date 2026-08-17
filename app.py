@@ -1,173 +1,118 @@
 import streamlit as st
-import yt_dlp
-import os
-import tempfile
-import glob
-import json
+import requests
+import re
 
-st.set_page_config(page_title="Cloud YT Downloader", page_icon="⬇️", layout="centered")
+st.set_page_config(page_title="Fast YT Downloader", page_icon="⬇️", layout="centered")
 
 st.title("⬇️ YouTube Downloader")
-st.caption("Streamlit Cloud Powered | Auto Netscape Cookie Converter")
+st.caption("YT1s Engine Powered | No Cookies Required | 100% Cloud Working")
 
-def json_to_netscape(cookies_data):
-    """Converts JSON cookie format to standard Netscape HTTP Cookie format."""
-    lines = ["# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n"]
-    for c in cookies_data:
-        domain = c.get('domain', '')
-        include_sub = "TRUE" if domain.startswith('.') else "FALSE"
-        path = c.get('path', '/')
-        secure = "TRUE" if c.get('secure', False) else "FALSE"
-        expires = str(int(c.get('expirationDate', c.get('expires', 0))))
-        name = c.get('name', '')
-        value = c.get('value', '')
-        lines.append(f"{domain}\t{include_sub}\t{path}\t{secure}\t{expires}\t{name}\t{value}\n")
-    return "".join(lines)
+def extract_video_id(url):
+    patterns = [
+        r'(?:v=|\/embed\/|\/shorts\/|youtu\.be\/)([A-Za-z0-9_-]{11})',
+        r'^([A-Za-z0-9_-]{11})$'
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url.strip())
+        if match:
+            return match.group(1)
+    return None
 
-def setup_cookies():
-    cookie_str = None
-    if "YOUTUBE_COOKIES" in st.secrets:
-        cookie_str = st.secrets["YOUTUBE_COOKIES"].strip()
-    elif os.path.exists("cookies.txt"):
-        with open("cookies.txt", "r", encoding="utf-8") as f:
-            cookie_str = f.read().strip()
-    
-    if not cookie_str:
-        return None
-
-    cookie_path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
-    
-    # Check if format is JSON
-    if cookie_str.startswith("[") or cookie_str.startswith("{"):
-        try:
-            data = json.loads(cookie_str)
-            if isinstance(data, dict):
-                data = [data]
-            netscape_content = json_to_netscape(data)
-            with open(cookie_path, "w", encoding="utf-8") as f:
-                f.write(netscape_content)
-            return cookie_path
-        except Exception:
-            pass
-
-    # If already Netscape or plain text
-    with open(cookie_path, "w", encoding="utf-8") as f:
-        f.write(cookie_str)
-    return cookie_path
-
-cookie_file = setup_cookies()
-
-if cookie_file:
-    st.success("🔒 YouTube Cookies സജീവമാണ് (Netscape Format Ready)", icon="✅")
-else:
-    st.warning("⚠️ Secrets-ൽ Cookies കണ്ടെത്തിയില്ല.", icon="ℹ️")
-
-url = st.text_input("YouTube Video URL നൽകുക:", placeholder="https://www.youtube.com/watch?v=...")
-
-col1, col2 = st.columns(2)
-with col1:
-    format_type = st.selectbox("Format തിരഞ്ഞെടുക്കുക:", ["MP3 (Audio)", "MP4 (Video)"])
-
-with col2:
-    if format_type == "MP3 (Audio)":
-        quality = st.selectbox("Audio Quality:", ["128 kbps", "192 kbps", "320 kbps"], index=1)
-    else:
-        quality = st.selectbox("Video Quality:", ["Best Available", "720p", "480p", "360p"], index=0)
-
-base_extractor_args = {
-    'youtube': {
-        'player_client': ['web', 'android', 'ios'],
+def fetch_yt1s_data(yt_url):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://yt1s.com.co/'
     }
-}
+    
+    # 1. Fetch available formats
+    search_url = "https://yt1s.com.co/api/ajaxSearch/index"
+    payload = {'q': yt_url, 'vt': 'home'}
+    
+    res = requests.post(search_url, data=payload, headers=headers, timeout=15)
+    return res.json()
+
+def get_direct_download_link(vid_id, k_key):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://yt1s.com.co/'
+    }
+    convert_url = "https://yt1s.com.co/api/ajaxConvert/convert"
+    payload = {'vid': vid_id, 'k': k_key}
+    
+    res = requests.post(convert_url, data=payload, headers=headers, timeout=20)
+    return res.json()
+
+url = st.text_input("YouTube Video URL നൽകുക:", placeholder="https://www.youtube.com/watch?v=kzpS-A3QJqE")
 
 if url:
-    try:
-        meta_opts = {
-            'quiet': True,
-            'nocheckcertificate': True,
-            'extractor_args': base_extractor_args,
-        }
-        if cookie_file:
-            meta_opts['cookiefile'] = cookie_file
-
-        with yt_dlp.YoutubeDL(meta_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'YouTube_Media')
-            thumb = info.get('thumbnail', '')
-            uploader = info.get('uploader', 'Unknown')
-            duration = info.get('duration', 0)
-
-        st.markdown("---")
-        c1, c2 = st.columns([1, 2])
-        with c1:
-            if thumb:
-                st.image(thumb, use_container_width=True)
-        with c2:
-            st.subheader(title)
-            st.caption(f"📺 Channel: {uploader} | ⏱️ Duration: {duration // 60}m {duration % 60}s")
-        st.markdown("---")
-
-        if st.button("🚀 ഡൗൺലോഡ് ഫയൽ തയ്യാറാക്കുക", use_container_width=True):
-            with st.spinner("സെർവറിൽ പ്രോസസ്സ് ചെയ്യുന്നു, ദയവായി കാത്തിരിക്കൂ..."):
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    out_template = os.path.join(temp_dir, "%(title).50s.%(ext)s")
-
-                    if format_type == "MP3 (Audio)":
-                        bitrate = quality.split()[0]
-                        ydl_opts = {
-                            'format': 'ba/b',
-                            'outtmpl': out_template,
-                            'postprocessors': [{
-                                'key': 'FFmpegExtractAudio',
-                                'preferredcodec': 'mp3',
-                                'preferredquality': bitrate,
-                            }],
-                            'quiet': True,
-                            'nocheckcertificate': True,
-                            'extractor_args': base_extractor_args,
-                        }
-                    else:
-                        if quality == "Best Available":
-                            format_str = "bv*+ba/b"
-                        else:
-                            height = quality.replace("p", "")
-                            format_str = f"bv*[height<={height}]+ba/b[height<={height}]/bv*+ba/b"
-
-                        ydl_opts = {
-                            'format': format_str,
-                            'outtmpl': out_template,
-                            'merge_output_format': 'mp4',
-                            'quiet': True,
-                            'nocheckcertificate': True,
-                            'extractor_args': base_extractor_args,
-                        }
-
-                    if cookie_file:
-                        ydl_opts['cookiefile'] = cookie_file
-
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-
-                    downloaded_files = glob.glob(os.path.join(temp_dir, "*"))
+    vid_id = extract_video_id(url)
+    if not vid_id:
+        st.error("❌ സാധുവായ YouTube URL അല്ല. ദയവായി പരിശോധിക്കുക.")
+    else:
+        full_yt_url = f"https://www.youtube.com/watch?v={vid_id}"
+        
+        with st.spinner("വീഡിയോ വിവരങ്ങൾ ശേഖരിക്കുന്നു..."):
+            try:
+                data = fetch_yt1s_data(full_yt_url)
+                
+                if data.get('status') == 'ok':
+                    title = data.get('title', 'YouTube Video')
+                    author = data.get('a', 'YouTube Channel')
                     
-                    if downloaded_files:
-                        file_path = downloaded_files[0]
-                        file_name = os.path.basename(file_path)
-                        mime_type = "audio/mp3" if format_type == "MP3 (Audio)" else "video/mp4"
-
-                        with open(file_path, "rb") as f:
-                            file_bytes = f.read()
-
-                        st.success("✅ ഫയൽ തയ്യാറായിക്കഴിഞ്ഞു!")
-                        st.download_button(
-                            label=f"💾 Save {file_name}",
-                            data=file_bytes,
-                            file_name=file_name,
-                            mime=mime_type,
-                            use_container_width=True
-                        )
+                    st.markdown("---")
+                    c1, c2 = st.columns([1, 2])
+                    with c1:
+                        st.image(f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg", use_container_width=True)
+                    with c2:
+                        st.subheader(title)
+                        st.caption(f"📺 {author}")
+                    st.markdown("---")
+                    
+                    # ഫോർമാറ്റുകൾ വേർതിരിക്കുക (MP3 & MP4)
+                    links = data.get('links', {})
+                    mp4_formats = links.get('mp4', {})
+                    mp3_formats = links.get('mp3', {})
+                    
+                    fmt_choice = st.radio("Format തിരഞ്ഞെടുക്കുക:", ["🎬 MP4 (Video)", "🎵 MP3 (Audio)"], horizontal=True)
+                    
+                    selected_k = None
+                    selected_label = ""
+                    
+                    if "MP4" in fmt_choice:
+                        options = {}
+                        for key, val in mp4_formats.items():
+                            label = f"{val.get('q', 'Video')} ({val.get('size', 'N/A')})"
+                            options[label] = val.get('k')
+                        
+                        if options:
+                            chosen_opt = st.selectbox("Video Quality:", list(options.keys()))
+                            selected_k = options[chosen_opt]
+                            selected_label = chosen_opt
                     else:
-                        st.error("ഫയൽ പ്രോസസ്സ് ചെയ്യാൻ സാധിച്ചില്ല.")
-
-    except Exception as e:
-        st.error(f"Error: {e}")
+                        options = {}
+                        for key, val in mp3_formats.items():
+                            label = f"MP3 - {val.get('q', 'Audio')} ({val.get('size', 'N/A')})"
+                            options[label] = val.get('k')
+                            
+                        if options:
+                            chosen_opt = st.selectbox("Audio Quality:", list(options.keys()))
+                            selected_k = options[chosen_opt]
+                            selected_label = chosen_opt
+                    
+                    if selected_k and st.button("🚀 ഡൗൺലോഡ് ലിങ്ക് തയ്യാറാക്കുക", use_container_width=True):
+                        with st.spinner("ഡൗൺലോഡ് ലിങ്ക് ജനറേറ്റ് ചെയ്യുന്നു..."):
+                            conv_res = get_direct_download_link(vid_id, selected_k)
+                            
+                            if conv_res.get('status') == 'ok' and 'dlink' in conv_res:
+                                dlink = conv_res['dlink']
+                                st.success("✅ ഡൗൺലോഡ് ലിങ്ക് തയ്യാർ!")
+                                st.markdown(
+                                    f'<a href="{dlink}" target="_blank" style="display:block; text-align:center; background:#22c55e; color:white; padding:12px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;">⬇️ Click Here to Download ({selected_label})</a>',
+                                    unsafe_allow_html=True
+                                )
+                            else:
+                                st.error("ഡൗൺലോഡ് ലിങ്ക് എടുക്കാൻ കഴിഞ്ഞില്ല. വീണ്ടും ശ്രമിക്കുക.")
+                else:
+                    st.error("വീഡിയോ ലഭ്യമാക്കാൻ സാധിച്ചില്ല. URL ശരിയാണോ എന്ന് പരിശോധിക്കുക.")
+            except Exception as e:
+                st.error(f"Error: {e}")
