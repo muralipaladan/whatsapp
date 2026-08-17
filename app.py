@@ -7,7 +7,7 @@ import glob
 st.set_page_config(page_title="Cloud YT Downloader", page_icon="⬇️", layout="centered")
 
 st.title("⬇️ YouTube Downloader")
-st.caption("Streamlit Cloud Powered | MP3 & MP4 Converter")
+st.caption("Streamlit Cloud Powered | Anti-403 Fixed")
 
 url = st.text_input("YouTube Video URL നൽകുക:", placeholder="https://www.youtube.com/watch?v=...")
 
@@ -19,11 +19,26 @@ with col2:
     if format_type == "MP3 (Audio)":
         quality = st.selectbox("Audio Quality:", ["128 kbps", "192 kbps", "320 kbps"], index=1)
     else:
-        quality = st.selectbox("Video Quality:", ["720p (Fast)", "1080p", "480p", "360p"], index=0)
+        quality = st.selectbox("Video Quality:", ["720p", "1080p", "480p", "360p"], index=0)
+
+# Base extractor settings to bypass 403 Cloud blocks
+base_extractor_args = {
+    'youtube': {
+        'player_client': ['android', 'web']
+    }
+}
 
 if url:
     try:
-        with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        # Fetch metadata using android client simulation
+        meta_opts = {
+            'quiet': True,
+            'extractor_args': base_extractor_args
+        }
+        if os.path.exists('cookies.txt'):
+            meta_opts['cookiefile'] = 'cookies.txt'
+
+        with yt_dlp.YoutubeDL(meta_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'YouTube_Media')
             thumb = info.get('thumbnail', '')
@@ -45,33 +60,36 @@ if url:
                 with tempfile.TemporaryDirectory() as temp_dir:
                     out_template = os.path.join(temp_dir, "%(title).50s.%(ext)s")
 
+                    ydl_opts = {
+                        'outtmpl': out_template,
+                        'quiet': True,
+                        'nocheckcertificate': True,
+                        'extractor_args': base_extractor_args,
+                    }
+
+                    if os.path.exists('cookies.txt'):
+                        ydl_opts['cookiefile'] = 'cookies.txt'
+
                     if format_type == "MP3 (Audio)":
                         bitrate = quality.split()[0]
-                        ydl_opts = {
+                        ydl_opts.update({
                             'format': 'bestaudio/best',
-                            'outtmpl': out_template,
                             'postprocessors': [{
                                 'key': 'FFmpegExtractAudio',
                                 'preferredcodec': 'mp3',
                                 'preferredquality': bitrate,
-                            }],
-                            'quiet': True,
-                            'nocheckcertificate': True
-                        }
+                            }]
+                        })
                     else:
                         height = quality.split("p")[0]
-                        ydl_opts = {
+                        ydl_opts.update({
                             'format': f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/best[height<={height}][ext=mp4]/best',
-                            'outtmpl': out_template,
-                            'merge_output_format': 'mp4',
-                            'quiet': True,
-                            'nocheckcertificate': True
-                        }
+                            'merge_output_format': 'mp4'
+                        })
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])
 
-                    # Get processed files
                     downloaded_files = glob.glob(os.path.join(temp_dir, "*"))
                     
                     if downloaded_files:
