@@ -3,11 +3,64 @@ import yt_dlp
 import os
 import tempfile
 import glob
+import json
 
 st.set_page_config(page_title="Cloud YT Downloader", page_icon="⬇️", layout="centered")
 
 st.title("⬇️ YouTube Downloader")
-st.caption("Streamlit Cloud Powered | Anti-403 Engine")
+st.caption("Streamlit Cloud Powered | Auto Netscape Cookie Converter")
+
+def json_to_netscape(cookies_data):
+    """Converts JSON cookie format to standard Netscape HTTP Cookie format."""
+    lines = ["# Netscape HTTP Cookie File\n# http://curl.haxx.se/rfc/cookie_spec.html\n"]
+    for c in cookies_data:
+        domain = c.get('domain', '')
+        include_sub = "TRUE" if domain.startswith('.') else "FALSE"
+        path = c.get('path', '/')
+        secure = "TRUE" if c.get('secure', False) else "FALSE"
+        expires = str(int(c.get('expirationDate', c.get('expires', 0))))
+        name = c.get('name', '')
+        value = c.get('value', '')
+        lines.append(f"{domain}\t{include_sub}\t{path}\t{secure}\t{expires}\t{name}\t{value}\n")
+    return "".join(lines)
+
+def setup_cookies():
+    cookie_str = None
+    if "YOUTUBE_COOKIES" in st.secrets:
+        cookie_str = st.secrets["YOUTUBE_COOKIES"].strip()
+    elif os.path.exists("cookies.txt"):
+        with open("cookies.txt", "r", encoding="utf-8") as f:
+            cookie_str = f.read().strip()
+    
+    if not cookie_str:
+        return None
+
+    cookie_path = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+    
+    # Check if format is JSON
+    if cookie_str.startswith("[") or cookie_str.startswith("{"):
+        try:
+            data = json.loads(cookie_str)
+            if isinstance(data, dict):
+                data = [data]
+            netscape_content = json_to_netscape(data)
+            with open(cookie_path, "w", encoding="utf-8") as f:
+                f.write(netscape_content)
+            return cookie_path
+        except Exception:
+            pass
+
+    # If already Netscape or plain text
+    with open(cookie_path, "w", encoding="utf-8") as f:
+        f.write(cookie_str)
+    return cookie_path
+
+cookie_file = setup_cookies()
+
+if cookie_file:
+    st.success("🔒 YouTube Cookies സജീവമാണ് (Netscape Format Ready)", icon="✅")
+else:
+    st.warning("⚠️ Secrets-ൽ Cookies കണ്ടെത്തിയില്ല.", icon="ℹ️")
 
 url = st.text_input("YouTube Video URL നൽകുക:", placeholder="https://www.youtube.com/watch?v=...")
 
@@ -21,11 +74,9 @@ with col2:
     else:
         quality = st.selectbox("Video Quality:", ["Best Available", "720p", "480p", "360p"], index=0)
 
-# TV and iOS embedded clients bypass standard cloud datacenter IP blocks
 base_extractor_args = {
     'youtube': {
-        'player_client': ['tv_embedded', 'ios', 'android'],
-        'player_skip': ['configs', 'webpage'],
+        'player_client': ['web', 'android', 'ios'],
     }
 }
 
@@ -36,9 +87,8 @@ if url:
             'nocheckcertificate': True,
             'extractor_args': base_extractor_args,
         }
-        
-        if os.path.exists('cookies.txt'):
-            meta_opts['cookiefile'] = 'cookies.txt'
+        if cookie_file:
+            meta_opts['cookiefile'] = cookie_file
 
         with yt_dlp.YoutubeDL(meta_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -75,9 +125,6 @@ if url:
                             'quiet': True,
                             'nocheckcertificate': True,
                             'extractor_args': base_extractor_args,
-                            'http_headers': {
-                                'User-Agent': 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1'
-                            }
                         }
                     else:
                         if quality == "Best Available":
@@ -93,13 +140,10 @@ if url:
                             'quiet': True,
                             'nocheckcertificate': True,
                             'extractor_args': base_extractor_args,
-                            'http_headers': {
-                                'User-Agent': 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1'
-                            }
                         }
 
-                    if os.path.exists('cookies.txt'):
-                        ydl_opts['cookiefile'] = 'cookies.txt'
+                    if cookie_file:
+                        ydl_opts['cookiefile'] = cookie_file
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])
@@ -127,4 +171,3 @@ if url:
 
     except Exception as e:
         st.error(f"Error: {e}")
-        st.info("💡 YouTube Cloud IP പൂർണ്ണമായി ബ്ലോക്ക് ചെയ്യുകയാണെങ്കിൽ, ഒരു `cookies.txt` ഫയൽ GitHub റൂട്ട് ഫോൾഡറിൽ ആഡ് ചെയ്യുക.")
