@@ -7,7 +7,7 @@ import glob
 st.set_page_config(page_title="Cloud YT Downloader", page_icon="⬇️", layout="centered")
 
 st.title("⬇️ YouTube Downloader")
-st.caption("Streamlit Cloud Powered | Auto-Fallback Format Engine")
+st.caption("Streamlit Cloud Powered | Anti-403 Engine")
 
 url = st.text_input("YouTube Video URL നൽകുക:", placeholder="https://www.youtube.com/watch?v=...")
 
@@ -21,9 +21,11 @@ with col2:
     else:
         quality = st.selectbox("Video Quality:", ["Best Available", "720p", "480p", "360p"], index=0)
 
+# TV and iOS embedded clients bypass standard cloud datacenter IP blocks
 base_extractor_args = {
     'youtube': {
-        'player_client': ['android', 'web', 'ios'],
+        'player_client': ['tv_embedded', 'ios', 'android'],
+        'player_skip': ['configs', 'webpage'],
     }
 }
 
@@ -60,12 +62,10 @@ if url:
                 with tempfile.TemporaryDirectory() as temp_dir:
                     out_template = os.path.join(temp_dir, "%(title).50s.%(ext)s")
 
-                    # Robust fallback format selectors
                     if format_type == "MP3 (Audio)":
                         bitrate = quality.split()[0]
-                        format_str = "ba/b"  # Best audio fallback to best available stream
                         ydl_opts = {
-                            'format': format_str,
+                            'format': 'ba/b',
                             'outtmpl': out_template,
                             'postprocessors': [{
                                 'key': 'FFmpegExtractAudio',
@@ -75,13 +75,15 @@ if url:
                             'quiet': True,
                             'nocheckcertificate': True,
                             'extractor_args': base_extractor_args,
+                            'http_headers': {
+                                'User-Agent': 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1'
+                            }
                         }
                     else:
                         if quality == "Best Available":
                             format_str = "bv*+ba/b"
                         else:
                             height = quality.replace("p", "")
-                            # Fallback: specific height -> smaller height -> any best stream
                             format_str = f"bv*[height<={height}]+ba/b[height<={height}]/bv*+ba/b"
 
                         ydl_opts = {
@@ -91,6 +93,9 @@ if url:
                             'quiet': True,
                             'nocheckcertificate': True,
                             'extractor_args': base_extractor_args,
+                            'http_headers': {
+                                'User-Agent': 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1'
+                            }
                         }
 
                     if os.path.exists('cookies.txt'):
@@ -122,3 +127,4 @@ if url:
 
     except Exception as e:
         st.error(f"Error: {e}")
+        st.info("💡 YouTube Cloud IP പൂർണ്ണമായി ബ്ലോക്ക് ചെയ്യുകയാണെങ്കിൽ, ഒരു `cookies.txt` ഫയൽ GitHub റൂട്ട് ഫോൾഡറിൽ ആഡ് ചെയ്യുക.")
