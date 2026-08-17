@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YT Downloader</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --border: #2a2a38;
+    --accent: #7c6af7;
+    --accent2: #a78bfa;
+    --text: #e8e8f0;
+    --muted: #8080a0;
+    --green: #22c55e;
+    --red: #ef4444;
+    --radius: 12px;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 80px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+  .logo {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -1px;
+  }
+  .tagline {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-top: 6px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 640px;
+  }
+
+  /* URL input */
+  .input-row {
+    display: flex;
+    gap: 10px;
+  }
+  .url-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 0.95rem;
+    padding: 12px 16px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .url-input:focus { border-color: var(--accent); }
+  .url-input::placeholder { color: var(--muted); }
+
+  .btn {
+    background: linear-gradient(135deg, var(--accent), #9f7aea);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 12px 22px;
+    transition: opacity .2s, transform .1s;
+    white-space: nowrap;
+  }
+  .btn:hover { opacity: .88; }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Format tabs */
+  .fmt-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 20px 0 16px;
+  }
+  .fmt-tab {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 10px;
+    text-align: center;
+    transition: all .2s;
+  }
+  .fmt-tab.active {
+    background: rgba(124,106,247,.15);
+    border-color: var(--accent);
+    color: var(--accent2);
+  }
+
+  /* Quality pills */
+  .quality-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .q-pill {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.82rem;
+    padding: 5px 14px;
+    transition: all .2s;
+  }
+  .q-pill.active {
+    background: rgba(124,106,247,.15);
+    border-color: var(--accent);
+    color: var(--accent2);
+  }
+
+  /* Video info */
+  #info-box {
+    display: none;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-top: 20px;
+    overflow: hidden;
+  }
+  .info-inner {
+    display: flex;
+    gap: 14px;
+    padding: 14px;
+    align-items: flex-start;
+  }
+  #thumb {
+    border-radius: 6px;
+    flex-shrink: 0;
+    height: 72px;
+    object-fit: cover;
+    width: 120px;
+  }
+  .info-text { flex: 1; min-width: 0; }
+  #vid-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  #vid-meta { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+
+  .dl-btn-wrap { padding: 0 14px 14px; }
+  #dl-btn {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 12px;
+    text-align: center;
+    width: 100%;
+    text-decoration: none;
+    display: block;
+    transition: opacity .2s;
+  }
+  #dl-btn:hover { opacity: .88; }
+
+  /* Status */
+  #status {
+    display: none;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    margin-top: 16px;
+    padding: 10px 14px;
+  }
+  #status.loading { background: rgba(124,106,247,.1); border: 1px solid var(--accent); color: var(--accent2); }
+  #status.error   { background: rgba(239,68,68,.1);   border: 1px solid var(--red);    color: var(--red); }
+  #status.success { background: rgba(34,197,94,.1);   border: 1px solid var(--green);  color: var(--green); }
+
+  /* Spinner */
+  .spin {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--accent2);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* How-to */
+  .steps {
+    display: flex;
+    gap: 16px;
+    margin-top: 36px;
+    max-width: 640px;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    flex: 1;
+    min-width: 160px;
+    padding: 16px;
+    text-align: center;
+  }
+  .step-num {
+    background: rgba(124,106,247,.15);
+    border-radius: 50%;
+    color: var(--accent2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    height: 32px;
+    width: 32px;
+    margin-bottom: 10px;
+  }
+  .step p { color: var(--muted); font-size: 0.82rem; line-height: 1.5; }
+  .step strong { color: var(--text); display: block; font-size: 0.88rem; margin-bottom: 4px; }
+
+  footer {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-top: 48px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⬇ YT Downloader</div>
+  <p class="tagline">YouTube videos — MP3 / MP4 ആയി download ചെയ്യൂ</p>
+</header>
+
+<div class="card">
+  <!-- URL input -->
+  <div class="input-row">
+    <input id="url-in" class="url-input" type="text"
+      placeholder="YouTube URL paste ചെയ്യൂ...">
+    <button class="btn" id="fetch-btn" onclick="fetchInfo()">Get</button>
+  </div>
+
+  <!-- Format -->
+  <div class="fmt-tabs">
+    <div class="fmt-tab active" onclick="setFmt('mp3',this)">🎵 MP3</div>
+    <div class="fmt-tab" onclick="setFmt('mp4',this)">🎬 MP4</div>
+  </div>
+
+  <!-- Quality (MP3) -->
+  <div class="quality-row" id="quality-row">
+    <span class="q-pill" onclick="setQ('128',this)">128 kbps</span>
+    <span class="q-pill active" onclick="setQ('192',this)">192 kbps</span>
+    <span class="q-pill" onclick="setQ('320',this)">320 kbps</span>
+  </div>
+
+  <!-- MP4 quality -->
+  <div class="quality-row" id="qual-mp4" style="display:none">
+    <span class="q-pill active" onclick="setQ('1080',this)">1080p</span>
+    <span class="q-pill" onclick="setQ('720',this)">720p</span>
+    <span class="q-pill" onclick="setQ('480',this)">480p</span>
+    <span class="q-pill" onclick="setQ('360',this)">360p</span>
+  </div>
+
+  <!-- Status -->
+  <div id="status"></div>
+
+  <!-- Video info + download -->
+  <div id="info-box">
+    <div class="info-inner">
+      <img id="thumb" src="" alt="">
+      <div class="info-text">
+        <div id="vid-title"></div>
+        <div id="vid-meta"></div>
+      </div>
+    </div>
+    <div class="dl-btn-wrap">
+      <a id="dl-btn" href="#" onclick="startDownload(event)">⬇️ Download</a>
+    </div>
+  </div>
+</div>
+
+<!-- Steps -->
+<div class="steps">
+  <div class="step">
+    <div class="step-num">1</div>
+    <strong>URL Paste</strong>
+    <p>YouTube video URL copy ചെയ്ത് box-ൽ paste ചെയ്യൂ</p>
+  </div>
+  <div class="step">
+    <div class="step-num">2</div>
+    <strong>Format Select</strong>
+    <p>MP3 (audio) അല്ലെങ്കിൽ MP4 (video) choose ചെയ്യൂ</p>
+  </div>
+  <div class="step">
+    <div class="step-num">3</div>
+    <strong>Download</strong>
+    <p>Download button click ചെയ്ത് file save ചെയ്യൂ</p>
+  </div>
+</div>
+
+<footer>Personal use only. Copyrighted content download ചെയ്യരുത്.</footer>
+
+<script>
+// ── State ──────────────────────────────────────────────
+let state = { fmt: 'mp3', quality: '192', videoId: '', title: '' };
+
+// Cobalt API instances (public, free, no key)
+const COBALT_APIS = [
+  'https://api.cobalt.tools',
+  'https://co.wuk.sh',
+  'https://cobalt.synzr.space',
+];
+
+// ── Helpers ────────────────────────────────────────────
+function extractVideoId(url) {
+  const patterns = [
+    /(?:v=|\/embed\/|\/shorts\/|youtu\.be\/)([A-Za-z0-9_-]{11})/,
+    /^([A-Za-z0-9_-]{11})$/,
+  ];
+  for (const p of patterns) {
+    const m = url.trim().match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function fmtDur(s) {
+  if (!s) return '';
+  const m = Math.floor(s / 60), sec = s % 60;
+  return `${m}:${sec.toString().padStart(2,'0')}`;
+}
+
+function fmtViews(n) {
+  if (!n) return '';
+  if (n >= 1e6) return `${(n/1e6).toFixed(1)}M views`;
+  if (n >= 1e3) return `${(n/1e3).toFixed(0)}K views`;
+  return `${n} views`;
+}
+
+function showStatus(msg, type='loading') {
+  const el = document.getElementById('status');
+  el.style.display = 'block';
+  el.className = type;
+  el.innerHTML = type === 'loading'
+    ? `<span class="spin"></span>${msg}`
+    : msg;
+}
+
+function hideStatus() {
+  document.getElementById('status').style.display = 'none';
+}
+
+function setFmt(fmt, el) {
+  state.fmt = fmt;
+  document.querySelectorAll('.fmt-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('quality-row').style.display = fmt === 'mp3' ? 'flex' : 'none';
+  document.getElementById('qual-mp4').style.display   = fmt === 'mp4' ? 'flex' : 'none';
+  state.quality = fmt === 'mp3' ? '192' : '1080';
+  // reset active quality pill
+  const activeRow = fmt === 'mp3' ? 'quality-row' : 'qual-mp4';
+  document.querySelectorAll(`#${activeRow} .q-pill`).forEach((p,i) => {
+    p.classList.toggle('active', i === (fmt==='mp3'?1:0));
+  });
+  updateDlBtn();
+}
+
+function setQ(q, el) {
+  state.quality = q;
+  const row = state.fmt === 'mp3' ? 'quality-row' : 'qual-mp4';
+  document.querySelectorAll(`#${row} .q-pill`).forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  updateDlBtn();
+}
+
+function updateDlBtn() {
+  const btn = document.getElementById('dl-btn');
+  if (!btn) return;
+  const label = state.fmt === 'mp3'
+    ? `⬇️ Download MP3 — ${state.quality} kbps`
+    : `⬇️ Download MP4 — ${state.quality}p`;
+  btn.textContent = label;
+}
+
+// ── Fetch video info (oEmbed — no API key) ─────────────
+async function fetchInfo() {
+  const url = document.getElementById('url-in').value.trim();
+  if (!url) return;
+
+  const vid = extractVideoId(url);
+  if (!vid) {
+    showStatus('❌ Valid YouTube URL അല്ല. ഒന്നുകൂടി check ചെയ്യൂ.', 'error');
+    return;
+  }
+
+  state.videoId = vid;
+  showStatus('Video info fetch ചെയ്യുന്നു...');
+  document.getElementById('info-box').style.display = 'none';
+  document.getElementById('fetch-btn').disabled = true;
+
+  try {
+    // oEmbed — free, no CORS issue
+    const oembed = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`
+    ).then(r => r.json());
+
+    state.title = oembed.title || 'Video';
+    document.getElementById('thumb').src =
+      `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`;
+    document.getElementById('vid-title').textContent = oembed.title || '';
+    document.getElementById('vid-meta').textContent  =
+      oembed.author_name ? `📺 ${oembed.author_name}` : '';
+
+    document.getElementById('info-box').style.display = 'block';
+    updateDlBtn();
+    hideStatus();
+  } catch (e) {
+    showStatus('❌ Video info കിട്ടിയില്ല. URL valid ആണോ?', 'error');
+  } finally {
+    document.getElementById('fetch-btn').disabled = false;
+  }
+}
+
+// ── Download via Cobalt API ────────────────────────────
+async function startDownload(e) {
+  e.preventDefault();
+  if (!state.videoId) return;
+
+  showStatus('Download link prepare ചെയ്യുന്നു...');
+
+  const ytUrl = `https://www.youtube.com/watch?v=${state.videoId}`;
+  const isAudio = state.fmt === 'mp3';
+
+  // Map quality
+  const qualMap = { '128':'128','192':'192','320':'320' };
+  const vQual = state.quality === '1080' ? '1080'
+              : state.quality === '720'  ? '720'
+              : state.quality === '480'  ? '480' : '360';
+
+  const body = {
+    url: ytUrl,
+    downloadMode: isAudio ? 'audio' : 'auto',
+    ...(isAudio
+      ? { audioFormat: 'mp3', audioBitrate: qualMap[state.quality] || '192' }
+      : { videoQuality: vQual }),
+  };
+
+  let lastErr = '';
+  for (const api of COBALT_APIS) {
+    try {
+      showStatus(`Connecting to server...`);
+      const res = await fetch(`${api}/`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!res.ok) { lastErr = `HTTP ${res.status}`; continue; }
+
+      const data = await res.json();
+
+      if (data.status === 'tunnel' || data.status === 'redirect') {
+        // Got a direct download URL
+        const dlUrl = data.url;
+        showStatus('✅ Download ready!', 'success');
+
+        // Trigger download
+        const a = document.createElement('a');
+        a.href = dlUrl;
+        a.download = `${state.title}.${state.fmt}`;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
+      if (data.status === 'error') {
+        lastErr = data.error?.code || 'Unknown error';
+        continue;
+      }
+
+      lastErr = `Unexpected response: ${data.status}`;
+    } catch (err) {
+      lastErr = err.message;
+    }
+  }
+
+  // All APIs failed — fallback to yt1s redirect
+  showStatus(
+    `⚠️ Auto-download failed (${lastErr}). ` +
+    `<a href="https://yt1s.com.co/?url=${encodeURIComponent(ytUrl)}" ` +
+    `target="_blank" style="color:var(--accent2);text-decoration:underline">` +
+    `yt1s-ൽ try ചെയ്യൂ →</a>`,
+    'error'
+  );
+}
+
+// Enter key support
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('url-in').addEventListener('keydown', e => {
+    if (e.key === 'Enter') fetchInfo();
+  });
+
+  // Auto-detect pasted URL
+  document.getElementById('url-in').addEventListener('paste', () => {
+    setTimeout(() => {
+      const v = document.getElementById('url-in').value;
+      if (extractVideoId(v)) fetchInfo();
+    }, 100);
+  });
+});
+</script>
+</body>
+</html>
