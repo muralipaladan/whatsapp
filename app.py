@@ -1,6 +1,6 @@
 import streamlit as st
 import yt_dlp
-import os, re, tempfile, urllib.parse, requests
+import os, re, tempfile
 
 st.set_page_config(page_title="🎵 Song Downloader", page_icon="🎵", layout="centered")
 
@@ -17,137 +17,20 @@ st.markdown("""
 st.title("🎵 Song Downloader")
 st.caption("YouTube-ൽ search ചെയ്ത് MP3 / MP4 download ചെയ്യൂ")
 
-# ─── Search via YouTube Music InnerTube API ─────────────────────────────────
-# android_music client — IP block ഒഴിവാക്കും
-INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
-INNERTUBE_URL = f"https://www.youtube.com/youtubei/v1/search?key={INNERTUBE_KEY}&prettyPrint=false"
-
-ANDROID_HEADERS = {
-    "User-Agent": "com.google.android.apps.youtube.music/5.34.51 (Linux; U; Android 11) gzip",
-    "Content-Type": "application/json",
-    "X-YouTube-Client-Name": "21",
-    "X-YouTube-Client-Version": "5.34.51",
-    "Origin": "https://music.youtube.com",
-}
-
-ANDROID_CONTEXT = {
-    "client": {
-        "clientName": "ANDROID_MUSIC",
-        "clientVersion": "5.34.51",
-        "androidSdkVersion": 30,
-        "userAgent": "com.google.android.apps.youtube.music/5.34.51 (Linux; U; Android 11) gzip",
-        "hl": "en",
-        "gl": "IN",
-    }
-}
-
 def search_songs(query, max_results=8):
-    """YouTube Music InnerTube API search — android_music client"""
-    payload = {
-        "context": ANDROID_CONTEXT,
-        "query": query,
-        "params": "EgWKAQIIAWoKEAMQBBAKEAkQBQ==",  # songs filter
-    }
-    try:
-        r = requests.post(INNERTUBE_URL, json=payload, headers=ANDROID_HEADERS,
-                          timeout=10, verify=False)
-        r.raise_for_status()
-        data = r.json()
-
-        results = []
-        # Navigate InnerTube response tree
-        sections = (
-            data.get("contents", {})
-                .get("singleColumnSearchResultsRenderer", {})
-                .get("tabs", [{}])[0]
-                .get("tabRenderer", {})
-                .get("content", {})
-                .get("sectionListRenderer", {})
-                .get("contents", [])
-        )
-        for section in sections:
-            items = section.get("musicShelfRenderer", {}).get("contents", [])
-            for item in items:
-                r2 = item.get("musicResponsiveListItemRenderer", {})
-                if not r2:
-                    continue
-                # Video ID
-                nav = r2.get("overlay", {}).get("musicItemThumbnailOverlayRenderer", {})
-                vid_id = (
-                    nav.get("content", {})
-                       .get("musicPlayButtonRenderer", {})
-                       .get("playNavigationEndpoint", {})
-                       .get("watchEndpoint", {})
-                       .get("videoId", "")
-                )
-                if not vid_id:
-                    # fallback: flexColumns
-                    for col in r2.get("flexColumns", []):
-                        runs = (col.get("musicResponsiveListItemFlexColumnRenderer", {})
-                                   .get("text", {}).get("runs", []))
-                        for run in runs:
-                            ep = run.get("navigationEndpoint", {}).get("watchEndpoint", {})
-                            if ep.get("videoId"):
-                                vid_id = ep["videoId"]
-                                break
-                        if vid_id:
-                            break
-
-                if not vid_id:
-                    continue
-
-                # Title
-                title = ""
-                cols = r2.get("flexColumns", [])
-                if cols:
-                    runs = (cols[0].get("musicResponsiveListItemFlexColumnRenderer", {})
-                                   .get("text", {}).get("runs", []))
-                    title = runs[0].get("text", "") if runs else ""
-
-                # Artist / Duration from second column
-                artist, duration = "", ""
-                if len(cols) > 1:
-                    runs2 = (cols[1].get("musicResponsiveListItemFlexColumnRenderer", {})
-                                    .get("text", {}).get("runs", []))
-                    parts = [x.get("text", "").strip() for x in runs2 if x.get("text","").strip()]
-                    artist = parts[0] if parts else ""
-                    duration = parts[-1] if len(parts) > 1 else ""
-
-                # Thumbnail
-                thumbs = (r2.get("thumbnail", {})
-                            .get("musicThumbnailRenderer", {})
-                            .get("thumbnail", {})
-                            .get("thumbnails", []))
-                thumb = thumbs[-1]["url"] if thumbs else f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg"
-
-                results.append({
-                    "id": vid_id,
-                    "title": title or "Unknown",
-                    "artist": artist,
-                    "duration": duration,
-                    "thumbnail": thumb,
-                })
-                if len(results) >= max_results:
-                    break
-            if len(results) >= max_results:
-                break
-
-        return results
-
-    except Exception as e:
-        # Fallback: yt-dlp ytsearch with android client
-        st.warning(f"Primary search failed ({e}), trying fallback...")
-        return search_ytdlp_fallback(query, max_results)
-
-
-def search_ytdlp_fallback(query, max_results=8):
-    """yt-dlp fallback search"""
+    """yt-dlp search — android_music + android client chain"""
     opts = {
         "quiet": True,
         "extract_flat": True,
         "no_check_certificate": True,
-        "extractor_args": {"youtube": {"player_client": ["android_music"]}},
-        "http_headers": ANDROID_HEADERS,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android_music", "android", "web"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": "com.google.android.apps.youtube.music/5.34.51 (Linux; U; Android 11) gzip",
+        },
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
         res = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
@@ -158,7 +41,10 @@ def search_ytdlp_fallback(query, max_results=8):
                 "title": e.get("title", "?"),
                 "artist": e.get("uploader", ""),
                 "duration": fmt_dur(e.get("duration")),
-                "thumbnail": e.get("thumbnail") or f"https://i.ytimg.com/vi/{e.get('id','')}/mqdefault.jpg",
+                "thumbnail": (
+                    e.get("thumbnail")
+                    or f"https://i.ytimg.com/vi/{e.get('id','')}/mqdefault.jpg"
+                ),
             }
             for e in entries if e and e.get("id")
         ]
@@ -173,7 +59,9 @@ def download_track(video_id, fmt, quality="192"):
         "quiet": True,
         "no_check_certificate": True,
         "extractor_args": {"youtube": {"player_client": ["android_music", "android", "web"]}},
-        "http_headers": ANDROID_HEADERS,
+        "http_headers": {
+            "User-Agent": "com.google.android.apps.youtube.music/5.34.51 (Linux; U; Android 11) gzip",
+        },
         "outtmpl": os.path.join(tmp, "%(title)s.%(ext)s"),
     }
 
