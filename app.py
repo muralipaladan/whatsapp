@@ -7,7 +7,7 @@ import glob
 st.set_page_config(page_title="Cloud YT Downloader", page_icon="⬇️", layout="centered")
 
 st.title("⬇️ YouTube Downloader")
-st.caption("Streamlit Cloud Powered | 403 Bypass Engine")
+st.caption("Streamlit Cloud Powered | Auto-Fallback Format Engine")
 
 url = st.text_input("YouTube Video URL നൽകുക:", placeholder="https://www.youtube.com/watch?v=...")
 
@@ -19,13 +19,11 @@ with col2:
     if format_type == "MP3 (Audio)":
         quality = st.selectbox("Audio Quality:", ["128 kbps", "192 kbps", "320 kbps"], index=1)
     else:
-        quality = st.selectbox("Video Quality:", ["720p", "480p", "360p"], index=0)
+        quality = st.selectbox("Video Quality:", ["Best Available", "720p", "480p", "360p"], index=0)
 
-# Cloud bypass extractor configuration (iOS + mweb combo)
 base_extractor_args = {
     'youtube': {
-        'player_client': ['ios', 'mweb'],
-        'player_skip': ['webpage', 'configs'],
+        'player_client': ['android', 'web', 'ios'],
     }
 }
 
@@ -37,7 +35,6 @@ if url:
             'extractor_args': base_extractor_args,
         }
         
-        # Check for cookies.txt
         if os.path.exists('cookies.txt'):
             meta_opts['cookiefile'] = 'cookies.txt'
 
@@ -63,35 +60,41 @@ if url:
                 with tempfile.TemporaryDirectory() as temp_dir:
                     out_template = os.path.join(temp_dir, "%(title).50s.%(ext)s")
 
-                    ydl_opts = {
-                        'outtmpl': out_template,
-                        'quiet': True,
-                        'nocheckcertificate': True,
-                        'extractor_args': base_extractor_args,
-                        'http_headers': {
-                            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
-                        }
-                    }
-
-                    if os.path.exists('cookies.txt'):
-                        ydl_opts['cookiefile'] = 'cookies.txt'
-
+                    # Robust fallback format selectors
                     if format_type == "MP3 (Audio)":
                         bitrate = quality.split()[0]
-                        ydl_opts.update({
-                            'format': 'bestaudio/best',
+                        format_str = "ba/b"  # Best audio fallback to best available stream
+                        ydl_opts = {
+                            'format': format_str,
+                            'outtmpl': out_template,
                             'postprocessors': [{
                                 'key': 'FFmpegExtractAudio',
                                 'preferredcodec': 'mp3',
                                 'preferredquality': bitrate,
-                            }]
-                        })
+                            }],
+                            'quiet': True,
+                            'nocheckcertificate': True,
+                            'extractor_args': base_extractor_args,
+                        }
                     else:
-                        height = quality.split("p")[0]
-                        ydl_opts.update({
-                            'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
-                            'merge_output_format': 'mp4'
-                        })
+                        if quality == "Best Available":
+                            format_str = "bv*+ba/b"
+                        else:
+                            height = quality.replace("p", "")
+                            # Fallback: specific height -> smaller height -> any best stream
+                            format_str = f"bv*[height<={height}]+ba/b[height<={height}]/bv*+ba/b"
+
+                        ydl_opts = {
+                            'format': format_str,
+                            'outtmpl': out_template,
+                            'merge_output_format': 'mp4',
+                            'quiet': True,
+                            'nocheckcertificate': True,
+                            'extractor_args': base_extractor_args,
+                        }
+
+                    if os.path.exists('cookies.txt'):
+                        ydl_opts['cookiefile'] = 'cookies.txt'
 
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])
@@ -119,4 +122,3 @@ if url:
 
     except Exception as e:
         st.error(f"Error: {e}")
-        st.info("💡 നിർദ്ദേശം: YouTube സെർവർ IP ബ്ലോക്ക് തുടരുകയാണെങ്കിൽ, ഒരു `cookies.txt` ഫയൽ GitHub-ൽ ആഡ് ചെയ്യുക.")
