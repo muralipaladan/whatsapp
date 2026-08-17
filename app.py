@@ -1,183 +1,190 @@
-#!/usr/bin/env python3
-"""
-Online Song Downloader
-YouTube, SoundCloud, Instagram, Facebook - ഏത് URL-ൽ നിന്നും audio download ചെയ്യാം.
-yt-dlp ഉപയോഗിക്കുന്നു (pip install yt-dlp)
-"""
-
+import streamlit as st
+import yt_dlp
 import os
-import sys
-import subprocess
+import tempfile
+import re
 
-# ---- yt-dlp auto-install ----
-try:
-    import yt_dlp
-except ImportError:
-    print("yt-dlp install ചെയ്യുന്നു...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "yt-dlp", "-q"])
-    import yt_dlp
+st.set_page_config(
+    page_title="🎵 Song Downloader",
+    page_icon="🎵",
+    layout="centered"
+)
+
+st.markdown("""
+<style>
+.main { max-width: 700px; margin: auto; }
+.stButton > button {
+    width: 100%;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 0.6em 1em;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+}
+.stButton > button:hover { opacity: 0.9; }
+.result-card {
+    background: #1e1e2e;
+    border-radius: 12px;
+    padding: 1rem 1.2rem;
+    margin: 0.5rem 0;
+    border: 1px solid #333;
+    cursor: pointer;
+}
+.result-title { font-weight: 600; font-size: 1rem; color: #e0e0e0; }
+.result-meta { font-size: 0.8rem; color: #888; margin-top: 4px; }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🎵 Song Downloader")
+st.caption("Song name search ചെയ്ത് MP3 / MP4 download ചെയ്യൂ")
+
+# --- Search ---
+col1, col2 = st.columns([4, 1])
+with col1:
+    query = st.text_input("", placeholder="Song name / Artist / Movie...", label_visibility="collapsed")
+with col2:
+    search_btn = st.button("🔍 Search")
+
+fmt = st.radio("Format", ["🎵 MP3 (Audio)", "🎬 MP4 (Video)"], horizontal=True)
+quality_mp3 = st.select_slider("MP3 Quality", options=["128", "192", "320"], value="192") if "MP3" in fmt else None
 
 
-def download_song(url: str, output_dir: str = "downloads", quality: str = "best"):
-    """
-    URL-ൽ നിന്ന് audio download ചെയ്യുന്നു.
-
-    Parameters:
-        url        : YouTube / SoundCloud / any yt-dlp supported URL
-        output_dir : Download folder (default: ./downloads)
-        quality    : 'best' | 'worst' | '128' | '192' | '320' (kbps)
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Audio quality setting
-    audio_quality = "0" if quality == "best" else ("9" if quality == "worst" else quality)
-
+def search_youtube(query, max_results=8):
     ydl_opts = {
-        "format": "bestaudio/best",
-        "postprocessors": [
-            {
+        "quiet": True,
+        "extract_flat": True,
+        "default_search": "ytsearch",
+        "noplaylist": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        results = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+        return results.get("entries", [])
+
+
+def format_duration(seconds):
+    if not seconds:
+        return "?"
+    m, s = divmod(int(seconds), 60)
+    return f"{m}:{s:02d}"
+
+
+def format_views(n):
+    if not n:
+        return ""
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M views"
+    if n >= 1_000:
+        return f"{n/1_000:.0f}K views"
+    return f"{n} views"
+
+
+def download_track(url, fmt_type, mp3_quality="192"):
+    tmp_dir = tempfile.mkdtemp()
+
+    if fmt_type == "mp3":
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": audio_quality,
-            }
-        ],
-        "outtmpl": os.path.join(output_dir, "%(title)s.%(ext)s"),
-        "quiet": False,
-        "noplaylist": False,   # playlist support ON - single URL ആണെങ്കിൽ single file മാത്രം
-        "progress_hooks": [progress_hook],
-    }
-
-    print(f"\n📥 Downloading: {url}")
-    print(f"📁 Save location: {os.path.abspath(output_dir)}\n")
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info.get("title", "Unknown")
-            print(f"\n✅ Done: {title}.mp3")
-            return True
-    except yt_dlp.utils.DownloadError as e:
-        print(f"\n❌ Download error: {e}")
-        return False
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-        return False
-
-
-def progress_hook(d):
-    """Download progress display"""
-    if d["status"] == "downloading":
-        percent = d.get("_percent_str", "?%").strip()
-        speed = d.get("_speed_str", "?").strip()
-        eta = d.get("_eta_str", "?").strip()
-        print(f"\r  ⏬ {percent}  Speed: {speed}  ETA: {eta}   ", end="", flush=True)
-    elif d["status"] == "finished":
-        print(f"\n  🎵 Audio extract ചെയ്യുന്നു...")
-
-
-def download_playlist(playlist_url: str, output_dir: str = "downloads"):
-    """YouTube Playlist മുഴുവൻ download ചെയ്യുന്നു"""
-    os.makedirs(output_dir, exist_ok=True)
-
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }
-        ],
-        "outtmpl": os.path.join(output_dir, "%(playlist_index)s - %(title)s.%(ext)s"),
-        "quiet": False,
-        "noplaylist": False,
-        "progress_hooks": [progress_hook],
-        "ignoreerrors": True,   # playlist-ൽ ഒരു video unavailable ആണെങ്കിൽ skip ചെയ്യും
-    }
-
-    print(f"\n📋 Playlist download: {playlist_url}")
-    print(f"📁 Save location: {os.path.abspath(output_dir)}\n")
+                "preferredquality": mp3_quality,
+            }],
+            "outtmpl": os.path.join(tmp_dir, "%(title)s.%(ext)s"),
+            "quiet": True,
+        }
+        ext = "mp3"
+        mime = "audio/mpeg"
+    else:
+        ydl_opts = {
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "outtmpl": os.path.join(tmp_dir, "%(title)s.%(ext)s"),
+            "quiet": True,
+            "merge_output_format": "mp4",
+        }
+        ext = "mp4"
+        mime = "video/mp4"
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([playlist_url])
-    print("\n✅ Playlist download complete!")
+        info = ydl.extract_info(url, download=True)
+        title = re.sub(r'[\\/*?:"<>|]', "", info.get("title", "song"))
+
+    # Find downloaded file
+    for f in os.listdir(tmp_dir):
+        if f.endswith(ext):
+            filepath = os.path.join(tmp_dir, f)
+            with open(filepath, "rb") as fh:
+                data = fh.read()
+            return data, f"{title}.{ext}", mime
+
+    raise FileNotFoundError("Downloaded file not found")
 
 
-def batch_download(urls: list, output_dir: str = "downloads"):
-    """Multiple URLs ഒരുമിച്ച് download ചെയ്യുന്നു"""
-    success = 0
-    fail = 0
-    for i, url in enumerate(urls, 1):
-        print(f"\n[{i}/{len(urls)}] Processing...")
-        if download_song(url.strip(), output_dir):
-            success += 1
-        else:
-            fail += 1
+# --- Session state ---
+if "results" not in st.session_state:
+    st.session_state.results = []
+if "selected" not in st.session_state:
+    st.session_state.selected = None
 
-    print(f"\n📊 Summary: ✅ {success} success | ❌ {fail} failed")
-
-
-# ========== INTERACTIVE MODE ==========
-def main():
-    print("=" * 50)
-    print("  🎵 Online Song Downloader")
-    print("  YouTube, SoundCloud, Instagram, Facebook")
-    print("=" * 50)
-
-    print("\nMode select:")
-    print("  1. Single song / video download")
-    print("  2. Playlist download")
-    print("  3. Batch download (multiple URLs)")
-    print("  4. URL list from text file")
-
-    choice = input("\nOption (1-4): ").strip()
-
-    output_dir = input("Download folder [downloads]: ").strip() or "downloads"
-
-    if choice == "1":
-        url = input("URL paste ചെയ്യൂ: ").strip()
-        quality = input("Quality kbps [192] (128/192/320/best): ").strip() or "192"
-        download_song(url, output_dir, quality)
-
-    elif choice == "2":
-        url = input("Playlist URL: ").strip()
-        download_playlist(url, output_dir)
-
-    elif choice == "3":
-        print("URLs enter ചെയ്യൂ (blank line കൊടുത്ത് finish ചെയ്യൂ):")
-        urls = []
-        while True:
-            u = input().strip()
-            if not u:
-                break
-            urls.append(u)
-        if urls:
-            batch_download(urls, output_dir)
-
-    elif choice == "4":
-        filepath = input("Text file path (ഓരോ line-ലും ഒരു URL): ").strip()
+# --- Search action ---
+if search_btn and query:
+    with st.spinner("🔍 Searching..."):
         try:
-            with open(filepath, "r") as f:
-                urls = [line.strip() for line in f if line.strip()]
-            print(f"  {len(urls)} URLs found.")
-            batch_download(urls, output_dir)
-        except FileNotFoundError:
-            print(f"❌ File not found: {filepath}")
+            st.session_state.results = search_youtube(query)
+            st.session_state.selected = None
+        except Exception as e:
+            st.error(f"Search failed: {e}")
 
-    else:
-        print("❌ Invalid option")
+# --- Show results ---
+if st.session_state.results:
+    st.markdown("---")
+    st.markdown("**Results — ഒരു song select ചെയ്യൂ:**")
 
+    for i, entry in enumerate(st.session_state.results):
+        if not entry:
+            continue
+        title = entry.get("title", "Unknown")
+        duration = format_duration(entry.get("duration"))
+        views = format_views(entry.get("view_count"))
+        uploader = entry.get("uploader", "")
+        thumb = entry.get("thumbnail", "")
+        url = entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id', '')}"
 
-# ========== DIRECT USE EXAMPLE ==========
-# Script-ൽ നേരിട്ട് URL കൊടുക്കാൻ:
-#
-#   download_song("https://www.youtube.com/watch?v=XXXXXXX")
-#   download_playlist("https://www.youtube.com/playlist?list=XXXXXXX")
-#   batch_download(["url1", "url2", "url3"])
+        col_img, col_info, col_btn = st.columns([1, 4, 1.5])
+        with col_img:
+            if thumb:
+                st.image(thumb, width=80)
+        with col_info:
+            st.markdown(f"**{title}**")
+            st.caption(f"⏱ {duration}  •  {uploader}  •  {views}")
+        with col_btn:
+            if st.button("Select", key=f"sel_{i}"):
+                st.session_state.selected = {"url": url, "title": title}
 
-if __name__ == "__main__":
-    # Interactive mode
-    main()
+# --- Download section ---
+if st.session_state.selected:
+    sel = st.session_state.selected
+    st.markdown("---")
+    st.success(f"✅ Selected: **{sel['title']}**")
 
-    # --- OR --- comment ചെയ്ത് direct call use ചെയ്യാം:
-    # download_song("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "my_songs", "320")
+    fmt_type = "mp3" if "MP3" in fmt else "mp4"
+    label = f"⬇️ Download {fmt_type.upper()}"
+
+    if st.button(label):
+        with st.spinner(f"Downloading {fmt_type.upper()}... ⏳"):
+            try:
+                data, filename, mime = download_track(
+                    sel["url"], fmt_type,
+                    mp3_quality=quality_mp3 or "192"
+                )
+                st.download_button(
+                    label=f"💾 Save {filename}",
+                    data=data,
+                    file_name=filename,
+                    mime=mime,
+                )
+                st.balloons()
+            except Exception as e:
+                st.error(f"Download failed: {e}")
+                st.info("YouTube restrictions മൂലം ചില songs download ആകാറില്ല.")
