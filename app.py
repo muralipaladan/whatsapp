@@ -1,185 +1,150 @@
 import streamlit as st
 import yt_dlp
 import os
-import tempfile
 import re
+import tempfile
 
-st.set_page_config(
-    page_title="🎵 Song Downloader",
-    page_icon="🎵",
-    layout="centered"
-)
+st.set_page_config(page_title="🎵 Song Downloader", page_icon="🎵", layout="centered")
 
 st.markdown("""
 <style>
-.main { max-width: 700px; margin: auto; }
 .stButton > button {
     width: 100%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    padding: 0.6em 1em;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white; border: none;
+    border-radius: 8px; font-weight: 600;
 }
-.stButton > button:hover { opacity: 0.9; }
-.result-card {
-    background: #1e1e2e;
-    border-radius: 12px;
-    padding: 1rem 1.2rem;
-    margin: 0.5rem 0;
-    border: 1px solid #333;
-    cursor: pointer;
-}
-.result-title { font-weight: 600; font-size: 1rem; color: #e0e0e0; }
-.result-meta { font-size: 0.8rem; color: #888; margin-top: 4px; }
+.thumb-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid #333; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🎵 Song Downloader")
-st.caption("Song name search ചെയ്ത് MP3 / MP4 download ചെയ്യൂ")
+st.caption("YouTube-ൽ search ചെയ്ത് MP3 / MP4 download ചെയ്യൂ")
 
-# --- Search ---
-col1, col2 = st.columns([4, 1])
-with col1:
-    query = st.text_input("", placeholder="Song name / Artist / Movie...", label_visibility="collapsed")
-with col2:
-    search_btn = st.button("🔍 Search")
+# --- Shared yt-dlp opts (bypass 403) ---
+BASE_OPTS = {
+    "quiet": True,
+    "no_check_certificate": True,
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android_music", "android", "web"],
+        }
+    },
+    "http_headers": {
+        "User-Agent": (
+            "com.google.android.apps.youtube.music/"
+            "5.34.51 (Linux; U; Android 11) gzip"
+        ),
+    },
+}
 
-fmt = st.radio("Format", ["🎵 MP3 (Audio)", "🎬 MP4 (Video)"], horizontal=True)
-quality_mp3 = st.select_slider("MP3 Quality", options=["128", "192", "320"], value="192") if "MP3" in fmt else None
+# ── Search ──────────────────────────────────────────────
+def search_youtube(query, n=8):
+    opts = {**BASE_OPTS, "extract_flat": True}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        res = ydl.extract_info(f"ytsearch{n}:{query}", download=False)
+        return res.get("entries", []) or []
 
+# ── Download ────────────────────────────────────────────
+def download_track(video_id, fmt, quality="192"):
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    tmp = tempfile.mkdtemp()
 
-def search_youtube(query, max_results=8):
-    ydl_opts = {
-        "quiet": True,
-        "extract_flat": True,
-        "default_search": "ytsearch",
-        "noplaylist": True,
-    }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        results = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
-        return results.get("entries", [])
-
-
-def format_duration(seconds):
-    if not seconds:
-        return "?"
-    m, s = divmod(int(seconds), 60)
-    return f"{m}:{s:02d}"
-
-
-def format_views(n):
-    if not n:
-        return ""
-    if n >= 1_000_000:
-        return f"{n/1_000_000:.1f}M views"
-    if n >= 1_000:
-        return f"{n/1_000:.0f}K views"
-    return f"{n} views"
-
-
-def download_track(url, fmt_type, mp3_quality="192"):
-    tmp_dir = tempfile.mkdtemp()
-
-    if fmt_type == "mp3":
-        ydl_opts = {
+    if fmt == "mp3":
+        opts = {
+            **BASE_OPTS,
             "format": "bestaudio/best",
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
-                "preferredquality": mp3_quality,
+                "preferredquality": quality,
             }],
-            "outtmpl": os.path.join(tmp_dir, "%(title)s.%(ext)s"),
-            "quiet": True,
+            "outtmpl": os.path.join(tmp, "%(title)s.%(ext)s"),
         }
-        ext = "mp3"
-        mime = "audio/mpeg"
+        ext, mime = "mp3", "audio/mpeg"
     else:
-        ydl_opts = {
+        opts = {
+            **BASE_OPTS,
             "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "outtmpl": os.path.join(tmp_dir, "%(title)s.%(ext)s"),
-            "quiet": True,
             "merge_output_format": "mp4",
+            "outtmpl": os.path.join(tmp, "%(title)s.%(ext)s"),
         }
-        ext = "mp4"
-        mime = "video/mp4"
+        ext, mime = "mp4", "video/mp4"
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=True)
         title = re.sub(r'[\\/*?:"<>|]', "", info.get("title", "song"))
 
-    # Find downloaded file
-    for f in os.listdir(tmp_dir):
+    for f in os.listdir(tmp):
         if f.endswith(ext):
-            filepath = os.path.join(tmp_dir, f)
-            with open(filepath, "rb") as fh:
-                data = fh.read()
-            return data, f"{title}.{ext}", mime
+            with open(os.path.join(tmp, f), "rb") as fh:
+                return fh.read(), f"{title}.{ext}", mime
 
-    raise FileNotFoundError("Downloaded file not found")
+    raise FileNotFoundError("File not found after download")
 
+# ── Helpers ─────────────────────────────────────────────
+def fmt_dur(s):
+    if not s: return "?"
+    m, sec = divmod(int(s), 60)
+    return f"{m}:{sec:02d}"
 
-# --- Session state ---
-if "results" not in st.session_state:
-    st.session_state.results = []
-if "selected" not in st.session_state:
-    st.session_state.selected = None
+def fmt_views(n):
+    if not n: return ""
+    return f"{n/1e6:.1f}M" if n >= 1e6 else (f"{n/1e3:.0f}K" if n >= 1e3 else str(n))
 
-# --- Search action ---
-if search_btn and query:
-    with st.spinner("🔍 Searching..."):
+# ── UI ──────────────────────────────────────────────────
+if "results" not in st.session_state: st.session_state.results = []
+if "selected" not in st.session_state: st.session_state.selected = None
+
+col1, col2 = st.columns([4, 1])
+with col1:
+    query = st.text_input("", placeholder="Song / Artist / Movie...", label_visibility="collapsed")
+with col2:
+    do_search = st.button("🔍 Search")
+
+fmt = st.radio("Format", ["🎵 MP3", "🎬 MP4"], horizontal=True)
+mp3_q = None
+if "MP3" in fmt:
+    mp3_q = st.select_slider("Quality (kbps)", ["128", "192", "320"], value="192")
+
+if do_search and query:
+    with st.spinner("Searching..."):
         try:
             st.session_state.results = search_youtube(query)
             st.session_state.selected = None
         except Exception as e:
-            st.error(f"Search failed: {e}")
+            st.error(f"Search error: {e}")
 
-# --- Show results ---
+# Results
 if st.session_state.results:
     st.markdown("---")
-    st.markdown("**Results — ഒരു song select ചെയ്യൂ:**")
+    st.markdown("**Results — select ചെയ്യൂ:**")
+    for i, e in enumerate(st.session_state.results):
+        if not e: continue
+        c1, c2, c3 = st.columns([1, 4, 1.5])
+        with c1:
+            thumb = e.get("thumbnail") or f"https://i.ytimg.com/vi/{e.get('id','')}/mqdefault.jpg"
+            st.image(thumb, width=80)
+        with c2:
+            st.markdown(f"**{e.get('title','?')}**")
+            st.caption(f"⏱ {fmt_dur(e.get('duration'))}  •  {e.get('uploader','')}  •  {fmt_views(e.get('view_count'))} views")
+        with c3:
+            if st.button("✅ Select", key=f"s{i}"):
+                st.session_state.selected = {"id": e.get("id"), "title": e.get("title","song")}
 
-    for i, entry in enumerate(st.session_state.results):
-        if not entry:
-            continue
-        title = entry.get("title", "Unknown")
-        duration = format_duration(entry.get("duration"))
-        views = format_views(entry.get("view_count"))
-        uploader = entry.get("uploader", "")
-        thumb = entry.get("thumbnail", "")
-        url = entry.get("url") or f"https://www.youtube.com/watch?v={entry.get('id', '')}"
-
-        col_img, col_info, col_btn = st.columns([1, 4, 1.5])
-        with col_img:
-            if thumb:
-                st.image(thumb, width=80)
-        with col_info:
-            st.markdown(f"**{title}**")
-            st.caption(f"⏱ {duration}  •  {uploader}  •  {views}")
-        with col_btn:
-            if st.button("Select", key=f"sel_{i}"):
-                st.session_state.selected = {"url": url, "title": title}
-
-# --- Download section ---
+# Download
 if st.session_state.selected:
     sel = st.session_state.selected
     st.markdown("---")
-    st.success(f"✅ Selected: **{sel['title']}**")
-
+    st.success(f"🎵 Selected: **{sel['title']}**")
     fmt_type = "mp3" if "MP3" in fmt else "mp4"
-    label = f"⬇️ Download {fmt_type.upper()}"
 
-    if st.button(label):
-        with st.spinner(f"Downloading {fmt_type.upper()}... ⏳"):
+    if st.button(f"⬇️ Download {fmt_type.upper()}"):
+        with st.spinner(f"Downloading {fmt_type.upper()}... ⏳ (30–60 sec)"):
             try:
-                data, filename, mime = download_track(
-                    sel["url"], fmt_type,
-                    mp3_quality=quality_mp3 or "192"
-                )
+                data, filename, mime = download_track(sel["id"], fmt_type, mp3_q or "192")
                 st.download_button(
-                    label=f"💾 Save {filename}",
+                    label=f"💾 Save — {filename}",
                     data=data,
                     file_name=filename,
                     mime=mime,
@@ -187,4 +152,4 @@ if st.session_state.selected:
                 st.balloons()
             except Exception as e:
                 st.error(f"Download failed: {e}")
-                st.info("YouTube restrictions മൂലം ചില songs download ആകാറില്ല.")
+                st.info("💡 മറ്റൊരു song try ചെയ്യൂ, അല്ലെങ്കിൽ കുറച്ചു നേരം കഴിഞ്ഞ് retry ചെയ്യൂ.")
