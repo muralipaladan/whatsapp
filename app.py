@@ -7,7 +7,7 @@ import glob
 st.set_page_config(page_title="Cloud YT Downloader", page_icon="⬇️", layout="centered")
 
 st.title("⬇️ YouTube Downloader")
-st.caption("Streamlit Cloud Powered | Anti-403 Fixed")
+st.caption("Streamlit Cloud Powered | 403 Bypass Engine")
 
 url = st.text_input("YouTube Video URL നൽകുക:", placeholder="https://www.youtube.com/watch?v=...")
 
@@ -19,22 +19,25 @@ with col2:
     if format_type == "MP3 (Audio)":
         quality = st.selectbox("Audio Quality:", ["128 kbps", "192 kbps", "320 kbps"], index=1)
     else:
-        quality = st.selectbox("Video Quality:", ["720p", "1080p", "480p", "360p"], index=0)
+        quality = st.selectbox("Video Quality:", ["720p", "480p", "360p"], index=0)
 
-# Base extractor settings to bypass 403 Cloud blocks
+# Cloud bypass extractor configuration (iOS + mweb combo)
 base_extractor_args = {
     'youtube': {
-        'player_client': ['android', 'web']
+        'player_client': ['ios', 'mweb'],
+        'player_skip': ['webpage', 'configs'],
     }
 }
 
 if url:
     try:
-        # Fetch metadata using android client simulation
         meta_opts = {
             'quiet': True,
-            'extractor_args': base_extractor_args
+            'nocheckcertificate': True,
+            'extractor_args': base_extractor_args,
         }
+        
+        # Check for cookies.txt
         if os.path.exists('cookies.txt'):
             meta_opts['cookiefile'] = 'cookies.txt'
 
@@ -65,6 +68,9 @@ if url:
                         'quiet': True,
                         'nocheckcertificate': True,
                         'extractor_args': base_extractor_args,
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+                        }
                     }
 
                     if os.path.exists('cookies.txt'):
@@ -83,7 +89,7 @@ if url:
                     else:
                         height = quality.split("p")[0]
                         ydl_opts.update({
-                            'format': f'bestvideo[height<={height}][ext=mp4]+bestaudio[ext=m4a]/best[height<={height}][ext=mp4]/best',
+                            'format': f'bestvideo[height<={height}]+bestaudio/best[height<={height}]/best',
                             'merge_output_format': 'mp4'
                         })
 
@@ -113,3 +119,4 @@ if url:
 
     except Exception as e:
         st.error(f"Error: {e}")
+        st.info("💡 നിർദ്ദേശം: YouTube സെർവർ IP ബ്ലോക്ക് തുടരുകയാണെങ്കിൽ, ഒരു `cookies.txt` ഫയൽ GitHub-ൽ ആഡ് ചെയ്യുക.")
