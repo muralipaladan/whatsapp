@@ -1,1 +1,1 @@
-https://cvsuivhfpav3vvyxu6mtcn.streamlit.app/
+https://muralipaladan.github.io/whatsapp/
