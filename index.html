@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ml">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR കോഡ് സ്കാനർ - WhatsApp Web</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #25D366, #128C7E);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+        }
+        .container {
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+            padding: 25px;
+            max-width: 450px;
+            width: 100%;
+            text-align: center;
+        }
+        .logo {
+            width: 70px;
+            height: 70px;
+            margin: 0 auto 15px;
+            background: #25D366;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 38px;
+        }
+        h1 {
+            color: #075E54;
+            font-size: 22px;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        #reader {
+            width: 100%;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 3px solid #25D366;
+            margin-bottom: 15px;
+            background: #000;
+        }
+        #result {
+            font-size: 13px;
+            color: #075E54;
+            background: #e8f5e9;
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            word-break: break-all;
+            display: none;
+        }
+        .btn {
+            background: #25D366;
+            color: #fff;
+            border: none;
+            padding: 14px 25px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            transition: 0.3s;
+        }
+        .btn:hover {
+            background: #128C7E;
+        }
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background: #075E54;
+        }
+        .manual-link {
+            display: block;
+            margin-top: 15px;
+            color: #128C7E;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .manual-link:hover {
+            text-decoration: underline;
+        }
+        .note {
+            font-size: 12px;
+            color: #999;
+            margin-top: 15px;
+            line-height: 1.5;
+        }
+    </style>
+    <!-- HTML5 QR Code Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+</head>
+<body>
+
+    <div class="container">
+        <div class="logo">📷</div>
+        <h1>QR കോഡ് സ്കാനർ</h1>
+        <p class="subtitle">WhatsApp Web ലേക്ക് ലോഗിൻ ചെയ്യാൻ QR സ്കാൻ ചെയ്യുക</p>
+
+        <div id="reader"></div>
+
+        <div id="result"></div>
+
+        <button id="startBtn" class="btn" onclick="startScanner()">
+            ▶️ ക്യാമറ തുറക്കുക
+        </button>
+
+        <button id="stopBtn" class="btn btn-secondary" onclick="stopScanner()" style="display:none;">
+            ⏹️ ക്യാമറ നിർത്തുക
+        </button>
+
+        <a href="https://web.whatsapp.com" target="_blank" class="manual-link">
+            അല്ലെങ്കിൽ WhatsApp Web നേരിട്ട് തുറക്കുക →
+        </a>
+
+        <p class="note">
+            ⚠️ ക്യാമറ ഉപയോഗിക്കാൻ അനുമതി നൽകണം. HTTPS അല്ലെങ്കിൽ localhost ൽ മാത്രമേ ക്യാമറ പ്രവർത്തിക്കൂ.
+        </p>
+    </div>
+
+    <script>
+        let html5QrCode = null;
+        let isScanning = false;
+
+        function startScanner() {
+            if (isScanning) return;
+
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('startBtn').innerText = 'ക്യാമറ തുറക്കുന്നു...';
+
+            html5QrCode = new Html5Qrcode("reader");
+
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0
+            };
+
+            html5QrCode.start(
+                { facingMode: "environment" },  // പിൻ ക്യാമറ ഉപയോഗിക്കാൻ
+                config,
+                onScanSuccess,
+                onScanError
+            ).then(() => {
+                isScanning = true;
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'block';
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('startBtn').innerText = '▶️ ക്യാമറ തുറക്കുക';
+            }).catch(err => {
+                alert('ക്യാമറ തുറക്കാൻ കഴിഞ്ഞില്ല: ' + err);
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('startBtn').innerText = '▶️ ക്യാമറ തുറക്കുക';
+            });
+        }
+
+        function stopScanner() {
+            if (html5QrCode && isScanning) {
+                html5QrCode.stop().then(() => {
+                    isScanning = false;
+                    document.getElementById('startBtn').style.display = 'block';
+                    document.getElementById('stopBtn').style.display = 'none';
+                }).catch(err => {
+                    console.log('Stop error:', err);
+                });
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // സ്കാൻ വിജയിച്ചു
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = '✅ <strong>സ്കാൻ ചെയ്തത്:</strong><br>' + decodedText;
+
+            // ബീപ്പ് ശബ്ദം
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                oscillator.frequency.value = 800;
+                oscillator.connect(audioCtx.destination);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.2);
+            } catch(e) {}
+
+            // വൈബ്രേഷൻ (മൊബൈലിൽ)
+            if (navigator.vibrate) navigator.vibrate(200);
+
+            // സ്കാനിംഗ് നിർത്തുക
+            stopScanner();
+
+            // QR ഒരു URL ആണെങ്കിൽ തുറക്കാൻ ചോദിക്കുക
+            if (decodedText.startsWith('http')) {
+                setTimeout(() => {
+                    if (confirm('ലിങ്ക് തുറക്കണോ?\n' + decodedText)) {
+                        window.open(decodedText, '_blank');
+                    }
+                }, 300);
+            }
+        }
+
+        function onScanError(errorMessage) {
+            // സ്കാൻ ചെയ്യുമ്പോൾ ഉണ്ടാകുന്ന സാധാരണ എറർ - നොക്കണ്ട
+        }
+
+        // പേജ് അൺലോഡ് ചെയ്യുമ്പോൾ ക്യാമറ നിർത്തുക
+        window.addEventListener('beforeunload', () => {
+            if (isScanning) stopScanner();
+        });
+    </script>
+
+</body>
+</html>
